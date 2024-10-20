@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "woo",
+  "version": "${version}",
+
+  "name": "WOO",
+  "description": "Situational enchantment display for Monumenta",
+  "authors": [
+    "Vladomeme"
+  ],
+  "contact": {
+  },
+
+  "license": "MIT",
+  "icon": "assets/woo/icon.png",
+
+  "environment": "*",
+  "entrypoints": {
+    "client": [
+      "net.woo.main.WOO"
+    ],
+    "modmenu": [
+      "net.woo.main.config.WOOModMenu"
+    ]
+  },
+  "mixins": [
+    "woo.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.14.21",
+    "fabric": "*",
+    "minecraft": "*",
+    "java": ">=17"
+  }
+}

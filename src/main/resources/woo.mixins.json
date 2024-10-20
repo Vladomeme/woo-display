@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.woo.main.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "ClientPlayerEntityMixin",
+    "ItemCooldownManagerMixin",
+    "LivingEntityMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
