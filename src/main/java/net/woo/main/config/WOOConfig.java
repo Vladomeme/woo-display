@@ -28,6 +28,7 @@ public class WOOConfig {
     public boolean shadow = true;
     public int refreshRate = 5;
     public boolean hideOutOfCombat = true;
+    public int outOfCombatTime = 20;
 
     public boolean displayPercent = true;
     public boolean showPoise = true;
@@ -66,6 +67,7 @@ public class WOOConfig {
             IOUtils.closeQuietly(reader);
         }
     }
+    
     private void onSave() {
         write();
         SituationalDisplay.updateTexts();
@@ -139,9 +141,16 @@ public class WOOConfig {
                         .option(Option.<Boolean>createBuilder()
                                 .name(Text.literal("Hide out of combat"))
                                 .description(OptionDescription.of(Text.literal(
-                                        "Display will be hidden if damage was not taken in 30 seconds.")))
+                                        "Display will be hidden if damage was not taken in some time.")))
                                 .binding(true, () -> hideOutOfCombat, newVal -> hideOutOfCombat = newVal)
                                 .controller(TickBoxControllerBuilder::create).build())
+
+                        .option(Option.<Integer>createBuilder()
+                                .name(Text.literal("Out of combat time"))
+                                .description(OptionDescription.of(Text.literal(
+                                        "Time in seconds for display to be hidden")))
+                                .binding(20, () -> outOfCombatTime, newVal -> outOfCombatTime = newVal)
+                                .controller(IntegerFieldControllerBuilder::create).build())
                         .build())
 
                 .category(ConfigCategory.createBuilder()

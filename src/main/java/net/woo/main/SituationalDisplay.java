@@ -60,7 +60,7 @@ public class SituationalDisplay {
     }
 
     public static void render(DrawContext context) {
-        if (WOOConfig.INSTANCE.hideOutOfCombat && damageTicks > 600) return;
+        if (WOOConfig.INSTANCE.hideOutOfCombat && damageTicks > WOOConfig.INSTANCE.outOfCombatTime * 20) return;
 
         float scale = WOOConfig.INSTANCE.scale;
         int x = (int) (WOOConfig.INSTANCE.x * context.getScaledWindowWidth() / scale);
@@ -127,8 +127,8 @@ public class SituationalDisplay {
     }
 
     public static void updateGuard() {
-        if (player.getMainHandStack().getItem().equals(Items.SHIELD)) guardTicks = 100;
-        else if (player.getOffHandStack().getItem().equals(Items.SHIELD)) guardTicks = 50;
+        if (player.getMainHandStack().getItem().equals(Items.SHIELD)) guardTicks = 120;
+        else if (player.getOffHandStack().getItem().equals(Items.SHIELD)) guardTicks = 80;
     }
 
     private static void updateEntityCounts() {
