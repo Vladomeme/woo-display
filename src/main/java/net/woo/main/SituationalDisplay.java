@@ -1,7 +1,11 @@
 package net.woo.main;
 
+import ch.njol.minecraft.uiframework.ElementPosition;
+import ch.njol.minecraft.uiframework.hud.HudElement;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.ChatScreen;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.item.TooltipContext;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.Entity;
@@ -9,6 +13,7 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.damage.DamageTypes;
 import net.minecraft.entity.decoration.ArmorStandEntity;
+import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.entity.passive.MerchantEntity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -20,23 +25,35 @@ import net.minecraft.text.Text;
 import net.minecraft.util.math.Box;
 import net.woo.main.config.WOOConfig;
 
+import java.awt.*;
 import java.util.*;
+import java.util.List;
 
-public class SituationalDisplay {
+public class SituationalDisplay extends HudElement {
 
-    private static final Set<Situationals> equippedSituationals = new HashSet<>();
-    private static int refreshTicks = 0;
+    public static final SituationalDisplay INSTANCE = new SituationalDisplay();
+    private static final WOOConfig config = WOOConfig.INSTANCE;
+    private static final MinecraftClient client = MinecraftClient.getInstance();
     private static ClientPlayerEntity player;
 
-    private static boolean reflexesActive = false;
-    private static boolean cloakedActive = false;
-    private static final InureTypes[] inureTypes = new InureTypes[2];
-    private static boolean inureReduced = false;
+    private static final List<TextLine> texts = new ArrayList<>();
+    private static int refreshTicks = 0;
+
     public static int damageTicks = 0;
     private static int shieldingCD = 0;
     private static int guardTicks = 0;
+    private static int reflexesTicks = 0;
+    private static int cloakedTicks = 0;
+    private static int cloakedStatus = 0;
 
-    public static void init(MinecraftClient client) {
+    private static int width = 150;
+    private static int height = 12;
+    private double dragXRelative;
+    private double dragYRelative;
+    private double dragXAbsolute;
+    private double dragYAbsolute;
+
+    public static void init() {
         player = client.player;
         updateTexts();
     }
@@ -46,33 +63,55 @@ public class SituationalDisplay {
         ++refreshTicks;
         if (shieldingCD > 0) --shieldingCD;
         if (guardTicks > 0) --guardTicks;
-        if (refreshTicks >= WOOConfig.INSTANCE.refreshRate) {
-            player = MinecraftClient.getInstance().player;
+        if (reflexesTicks > 0) --reflexesTicks;
+        if (cloakedTicks > 0) --cloakedTicks;
+
+        if (refreshTicks >= config.refreshRate) {
+            player = client.player;
             if (player == null) return;
-            boolean hadInure = equippedSituationals.contains(Situationals.Inure);
-            equippedSituationals.clear();
-            checkEquipped();
-            if (hadInure && !equippedSituationals.contains(Situationals.Inure)) inureTypes[0] = inureTypes[1] = null;
-            if (equippedSituationals.contains(Situationals.Reflexes) || equippedSituationals.contains(Situationals.Cloaked))
-                updateEntityCounts();
+
+            Set<Situationals> active = checkEquipped();
+
+            if (!active.contains(Situationals.Inure)) resetInure();
+            if (active.contains(Situationals.Cloaked)) updateCloakedStatus();
+
+            texts.clear();
+            if (config.rightAlignment) {
+                int maxLength = 0;
+                for (Situationals situational : active) {
+                    Text text = situational.getText();
+                    int length = client.textRenderer.getWidth(text);
+                    if (length > maxLength) maxLength = length;
+                    texts.add(new TextLine(text, length));
+                }
+                for (TextLine line : texts) line.pos = maxLength - line.pos;
+            }
+            else {
+                for (Situationals situational : active) texts.add(new TextLine(situational.getText(), 0));
+            }
             refreshTicks = 0;
         }
     }
+    
+    public static boolean shouldRender() {
+        return !config.hideOutOfCombat || damageTicks <= config.outOfCombatTime * 20;
+    }
 
-    public static void render(DrawContext context) {
-        if (WOOConfig.INSTANCE.hideOutOfCombat && damageTicks > WOOConfig.INSTANCE.outOfCombatTime * 20) return;
+    @Override
+    protected void render(DrawContext context, float delta) {
+        int y = 0;
+        float scale = config.scale;
 
-        float scale = WOOConfig.INSTANCE.scale;
-        int x = (int) (WOOConfig.INSTANCE.x * context.getScaledWindowWidth() / scale);
-        int y = (int) (WOOConfig.INSTANCE.y * context.getScaledWindowHeight() / scale);
-
-        context.getMatrices().push();
         context.getMatrices().scale(scale, scale, scale);
-        for (Situationals line : equippedSituationals) {
-            context.drawText(MinecraftClient.getInstance().textRenderer, line.getText(), x, y, 0, WOOConfig.INSTANCE.shadow);
+        for (TextLine line : texts) {
+            context.drawText(client.textRenderer, line.text, line.pos, y, 0, config.shadow);
             y += 12;
         }
-        context.getMatrices().pop();
+    }
+
+    @Override
+    public void renderTooltip(Screen screen, DrawContext drawContext, int mouseX, int mouseY) {
+        if (!dragging) drawContext.drawTooltip(client.textRenderer, Text.of("Hold ctrl to move"), mouseX, mouseY);
     }
 
     public static void onDamage(DamageSource source) {
@@ -90,31 +129,11 @@ public class SituationalDisplay {
         else if (source.isOf(DamageTypes.MAGIC)) type = InureTypes.magic;
         else return;
 
-        if (inureTypes[0] != null) {
-            if (inureTypes[1] == null) {
-                if (type == inureTypes[0]) {
-                    inureTypes[1] = type;
-                    inureReduced = false;
-                }
-                else inureTypes[0] = type;
-            }
-            else if (inureTypes[0] == inureTypes[1]) {
-                if (type != inureTypes[1]) {
-                    inureTypes[1] = type;
-                    inureReduced = true;
-                }
-            }
-            else if (type != inureTypes[0] && type != inureTypes[1]) {
-                inureTypes[0] = type;
-                inureTypes[1] = null;
-            }
-        }
-        else inureTypes[0] = type;
+        inure_text = Text.literal("Inure: ").setStyle(styleText).append(Text.literal(type.name()).setStyle(styleActive));
+    }
 
-        if (WOOConfig.INSTANCE.inureDetailedDisplay && inureTypes[1] != null)
-            inure_detailed = Text.literal("Inure: ").setStyle(styleText)
-                .append(Text.literal(inureTypes[0].name() + ", " + inureTypes[1].name()).setStyle(
-                        inureReduced ? styleHalf : styleActive));
+    private static void resetInure() {
+        inure_text = Text.literal("Inure: ").setStyle(styleText).append(Text.literal("inactive").setStyle(styleInactive));
     }
 
     private static void updateShielding(DamageSource source) {
@@ -131,26 +150,24 @@ public class SituationalDisplay {
         else if (player.getOffHandStack().getItem().equals(Items.SHIELD)) guardTicks = 80;
     }
 
-    private static void updateEntityCounts() {
-        List<Entity> entities = null;
-        if (equippedSituationals.contains(Situationals.Reflexes)) {
-            entities = player.clientWorld.getOtherEntities(player,
-                            new Box(player.getX() - 8, player.getY() - 8, player.getZ() - 8,
-                                    player.getX() + 8, player.getY() + 8, player.getZ() + 8))
-                    .stream().filter(SituationalDisplay::typeFilter).toList();
-            reflexesActive = entities.size() >= 4;
-        }
-        if (equippedSituationals.contains(Situationals.Cloaked)) {
-            if (entities == null) {
-                entities = player.clientWorld.getOtherEntities(player,
-                                new Box(player.getX() - 5, player.getY() - 5, player.getZ() - 5,
-                                        player.getX() + 5, player.getY() + 5, player.getZ() + 5))
-                        .stream().filter(SituationalDisplay::typeFilter).toList();
-                cloakedActive = entities.size() <= 2;
-            }
-            else cloakedActive = entities.stream().filter(SituationalDisplay::distanceFilter).count() <= 2;
+    public static void updateGuardOnDamage() {
+        guardTicks = 80;
+    }
 
-        }
+    private static void updateCloakedStatus() {
+        List<Entity> entities = player.clientWorld.getOtherEntities(player,
+                        new Box(player.getX() - 5, player.getY() - 5, player.getZ() - 5,
+                                player.getX() + 5, player.getY() + 5, player.getZ() + 5))
+                .stream().filter(SituationalDisplay::typeFilter).toList();
+        cloakedStatus = entities.size() <= 2 ? 2 : entities.size() == 3 ? 1 : 0;
+    }
+
+    public static void updateCloakedOnKill() {
+        cloakedTicks = 120;
+    }
+
+    public static void updateReflexes() {
+        reflexesTicks = 13;
     }
 
     private static boolean typeFilter(Entity entity) {
@@ -162,16 +179,6 @@ public class SituationalDisplay {
                 && !(entity instanceof MerchantEntity);
     }
 
-    private static boolean distanceFilter(Entity entity) {
-        double pX = player.getX();
-        double pY = player.getY();
-        double pZ = player.getZ();
-        double eX = entity.getX();
-        double eY = entity.getY();
-        double eZ = entity.getZ();
-        return eX > pX - 5 && eX < pX + 5 && eY > pY - 5 && eY < pY + 5 && eZ > pZ - 5 && eZ < pZ + 5;
-    }
-
     private enum Situationals {
         Poise("Poise ") {
             public Text getText() {
@@ -180,18 +187,16 @@ public class SituationalDisplay {
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showPoise;
+                return config.showPoise;
             }
         },
         Inure("Inure ") {
             public Text getText() {
-                if (inureTypes[1] == null) return inure_inactive;
-                return WOOConfig.INSTANCE.inureDetailedDisplay ? inure_detailed :
-                        ((inureTypes[0] == inureTypes[1]) && !inureReduced ? inure_active : inure_half);
+                return inure_text;
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showInure;
+                return config.showInure;
             }
         },
         Shielding("Shielding ") {
@@ -200,7 +205,7 @@ public class SituationalDisplay {
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showShielding;
+                return config.showShielding;
             }
         },
         Steadfast("Steadfast ") {
@@ -212,16 +217,16 @@ public class SituationalDisplay {
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showSteadfast;
+                return config.showSteadfast;
             }
         },
         Guard("Guard ") {
             public Text getText() {
-                return guardTicks != 0 ? guard_active : guard_inactive;
+                return guardTicks > 0 ? guard_active : guard_inactive;
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showGuard;
+                return config.showGuard;
             }
         },
         SecondWind("Second Wind ") {
@@ -230,34 +235,35 @@ public class SituationalDisplay {
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showSecondWind;
+                return config.showSecondWind;
             }
         },
         Tempo("Tempo ") {
             public Text getText() {
-                return damageTicks > 80 ? tempo_active : (damageTicks > 40 ? tempo_half : tempo_inactive);
+                return damageTicks > 80 ? tempo_active : (damageTicks > 50 ? tempo_half : tempo_inactive);
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showTempo;
+                return config.showTempo;
             }
         },
         Reflexes("Reflexes ") {
             public Text getText() {
-                return reflexesActive ? reflexes_active : reflexes_inactive;
+                return reflexesTicks > 0 ? reflexes_active : reflexes_inactive;
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showReflexes;
+                return config.showReflexes;
             }
         },
         Cloaked("Cloaked ") {
             public Text getText() {
-                return cloakedActive ? cloaked_active : cloaked_inactive;
+                if (cloakedTicks > 0) return cloaked_active;
+                return cloakedStatus == 2 ? cloaked_active : cloakedStatus == 1 ? cloaked_half : cloaked_inactive;
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showCloaked;
+                return config.showCloaked;
             }
         },
         Ethereal("Ethereal ") {
@@ -266,7 +272,7 @@ public class SituationalDisplay {
             }
 
             public boolean shouldDisplay() {
-                return WOOConfig.INSTANCE.showEthereal;
+                return config.showEthereal;
             }
         };
 
@@ -280,46 +286,46 @@ public class SituationalDisplay {
         public abstract boolean shouldDisplay();
     }
 
-    private static void checkEquipped() {
-        player.getArmorItems().forEach(SituationalDisplay::checkLore);
-        checkLore(player.getMainHandStack());
-        checkLore(player.getOffHandStack());
+    private static Set<Situationals> checkEquipped() {
+        Set<Situationals> situationals = new HashSet<>();
+        player.getArmorItems().forEach(itemStack -> checkLore(situationals, itemStack));
+        checkLore(situationals, player.getMainHandStack());
+        checkLore(situationals, player.getOffHandStack());
+
+        width = (int) (150 * config.scale);
+        height = (int) (situationals.size() * 12 * config.scale);
+        return situationals;
     }
 
-    private static void checkLore(ItemStack stack) {
+    private static void checkLore(Set<Situationals> situationals, ItemStack stack) {
         stack.getTooltip(player, TooltipContext.BASIC).forEach(line -> {
             for (Situationals enchant : Situationals.values()) {
                 if (!enchant.shouldDisplay()) continue;
-                if (line.getString().contains(enchant.name)) equippedSituationals.add(enchant);
+                if (line.getString().contains(enchant.name)) situationals.add(enchant);
             }
         });
     }
 
     public static void updateTexts() {
-        styleText = Style.EMPTY.withColor(WOOConfig.INSTANCE.textColor);
-        styleActive = Style.EMPTY.withColor(WOOConfig.INSTANCE.activeColor);
-        styleHalf = Style.EMPTY.withColor(WOOConfig.INSTANCE.halfColor);
-        styleInactive = Style.EMPTY.withColor(WOOConfig.INSTANCE.inactiveColor);
-        boolean displayPercent = WOOConfig.INSTANCE.displayPercent;
+        styleText = Style.EMPTY.withColor(config.textColor);
+        styleActive = Style.EMPTY.withColor(config.activeColor);
+        styleHalf = Style.EMPTY.withColor(config.halfColor);
+        styleInactive = Style.EMPTY.withColor(config.inactiveColor);
+        boolean displayPercent = config.displayPercent;
 
         poise_inactive = Text.literal("Poise: ").setStyle(styleText)
                 .append(Text.literal("inactive").setStyle(styleInactive));
         poise_active = Text.literal("Poise: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "20%" : "active").setStyle(styleActive));
+                .append(Text.literal(displayPercent ? "100%" : "active").setStyle(styleActive));
         poise_half = Text.literal("Poise: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "10%" : "active").setStyle(styleHalf));
+                .append(Text.literal(displayPercent ? "50%" : "active").setStyle(styleHalf));
 
-        inure_inactive = Text.literal("Inure: ").setStyle(styleText)
-                .append(Text.literal("inactive").setStyle(styleInactive));
-        inure_active = Text.literal("Inure: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "20%" : "active").setStyle(styleActive));
-        inure_half = Text.literal("Inure: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "10%" : "active").setStyle(styleHalf));
+        inure_text = Text.literal("Inure: ").setStyle(styleText).append(Text.literal("inactive").setStyle(styleInactive));
 
         shielding_active = Text.literal("Shielding: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "20%" : "active").setStyle(styleActive));
+                .append(Text.literal(displayPercent ? "100%" : "active").setStyle(styleActive));
         shielding_half = Text.literal("Shielding: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "10%" : "active").setStyle(styleHalf));
+                .append(Text.literal(displayPercent ? "50%" : "active").setStyle(styleHalf));
 
         steadfast = Text.literal("Steadfast: ").setStyle(styleText);
 
@@ -336,24 +342,104 @@ public class SituationalDisplay {
         tempo_inactive = Text.literal("Tempo: ").setStyle(styleText)
                 .append(Text.literal("inactive").setStyle(styleInactive));
         tempo_active = Text.literal("Tempo: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "20%" : "active").setStyle(styleActive));
+                .append(Text.literal(displayPercent ? "100%" : "active").setStyle(styleActive));
         tempo_half = Text.literal("Tempo: ").setStyle(styleText)
-                .append(Text.literal(displayPercent ? "10%" : "active").setStyle(styleHalf));
+                .append(Text.literal(displayPercent ? "50%" : "active").setStyle(styleHalf));
 
         reflexes_active = Text.literal("Reflexes: ").setStyle(styleText)
                 .append(Text.literal("active").setStyle(styleActive));
         reflexes_inactive = Text.literal("Reflexes: ").setStyle(styleText)
                 .append(Text.literal("inactive").setStyle(styleInactive));
 
-        cloaked_active = Text.literal("Cloaked: ").setStyle(styleText)
-                .append(Text.literal("active").setStyle(styleActive));
         cloaked_inactive = Text.literal("Cloaked: ").setStyle(styleText)
                 .append(Text.literal("inactive").setStyle(styleInactive));
+        cloaked_active = Text.literal("Cloaked: ").setStyle(styleText)
+                .append(Text.literal("100%").setStyle(styleActive));
+        cloaked_half = Text.literal("Cloaked: ").setStyle(styleText)
+                .append(Text.literal("50%").setStyle(styleHalf));
 
         ethereal_active = Text.literal("Ethereal: ").setStyle(styleText)
                 .append(Text.literal("active").setStyle(styleActive));
         ethereal_inactive = Text.literal("Ethereal: ").setStyle(styleText)
                 .append(Text.literal("inactive").setStyle(styleInactive));
+    }
+    
+    @Override
+    protected boolean isEnabled() {
+        return config.enabled;
+    }
+
+    @Override
+    protected boolean isVisible() {
+        return true;
+    }
+
+    @Override
+    protected int getWidth() {
+        return width;
+    }
+
+    @Override
+    protected int getHeight() {
+        return height;
+    }
+
+    @Override
+    protected ElementPosition getPosition() {
+        return config.textPosition;
+    }
+
+    @Override
+    public Rectangle getDimension() {
+        ElementPosition position = getPosition();
+        int width = getWidth();
+        int height = getHeight();
+        int x = Math.round((float) client.getWindow().getScaledWidth() * position.offsetXRelative + (float) position.offsetXAbsolute - position.alignX * (float) width);
+        int y = Math.round((float) client.getWindow().getScaledHeight() * position.offsetYRelative + (float) position.offsetYAbsolute);
+        if (config.effectPadding && !(client.currentScreen instanceof ChatScreen)) {
+            for (StatusEffectInstance effect : Objects.requireNonNull(client.player).getStatusEffects()) {
+                if (effect.shouldShowIcon()) y += config.effectPaddingSize;
+            }
+        }
+        return new Rectangle(x, y, width, height);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX, double deltaY) {
+        if (!dragging) return false;
+
+        Rectangle dimension = getDimension();
+        ElementPosition position = getPosition();
+        int scaledWidth = client.getWindow().getScaledWidth();
+        int scaledHeight = client.getWindow().getScaledHeight();
+        double newX = mouseX + (double) dimension.x - dragXRelative;
+        double newY = mouseY + (double) dimension.y - dragYRelative;
+
+        double horizontalMiddle = Math.abs(newX + (double) dimension.width / (double) 2.0F - (double) scaledWidth / (double) 2.0F);
+        double right = (double) scaledWidth - (newX + (double) dimension.width);
+        double verticalMiddle = Math.abs(newY + (double) dimension.height / (double) 2.0F - (double) scaledHeight / (double) 2.0F);
+        double bottom = (double) scaledHeight - (newY + (double) dimension.height);
+        position.offsetXRelative = newX < horizontalMiddle && newX < right ? 0.0F : (horizontalMiddle < right ? 0.5F : 1.0F);
+        position.offsetYRelative = newY < verticalMiddle && newY < bottom ? 0.0F : (verticalMiddle < bottom ? 0.5F : 1.0F);
+        position.alignX = position.offsetXRelative;
+        position.alignY = 0;
+        position.offsetXAbsolute = (int) Math.round(newX - (double) ((float) scaledWidth * position.offsetXRelative) + (double) (position.alignX * (float) dimension.width));
+        position.offsetYAbsolute = (int) Math.round(newY - (double) ((float) scaledHeight * position.offsetYRelative));
+        if (!Screen.hasAltDown()) {
+            if (position.offsetXRelative == 0.5F && Math.abs(position.offsetXAbsolute) < 10) {
+                position.offsetXAbsolute = 0;
+            }
+
+            if (position.offsetYRelative == 0.5F && Math.abs(position.offsetYAbsolute) < 10) {
+                position.offsetYAbsolute = 0;
+            }
+        }
+        return true;
+    }
+
+    @Override
+    protected int getZOffset() {
+        return 1;
     }
 
     private static Style styleText = Style.EMPTY;
@@ -365,10 +451,7 @@ public class SituationalDisplay {
     private static Text poise_active = Text.empty();
     private static Text poise_half = Text.empty();
 
-    private static Text inure_inactive = Text.empty();
-    private static Text inure_active = Text.empty();
-    private static Text inure_half = Text.empty();
-    private static Text inure_detailed = Text.empty();
+    private static Text inure_text = Text.empty();
 
     private static Text shielding_active = Text.empty();
     private static Text shielding_half = Text.empty();
@@ -390,7 +473,18 @@ public class SituationalDisplay {
 
     private static Text cloaked_active = Text.empty();
     private static Text cloaked_inactive = Text.empty();
+    private static Text cloaked_half = Text.empty();
 
     private static Text ethereal_active = Text.empty();
     private static Text ethereal_inactive = Text.empty();
+
+    static class TextLine {
+        final Text text;
+        int pos;
+
+        TextLine(Text text, int pos) {
+            this.text = text;
+            this.pos = pos;
+        }
+    }
 }

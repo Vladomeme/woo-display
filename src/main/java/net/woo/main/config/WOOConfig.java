@@ -1,5 +1,6 @@
 package net.woo.main.config;
 
+import ch.njol.minecraft.uiframework.ElementPosition;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonWriter;
 import dev.isxander.yacl3.api.ConfigCategory;
@@ -22,18 +23,19 @@ import java.io.Reader;
 public class WOOConfig {
 
     public boolean enabled = true;
-    public float x = 0.015f;
-    public float y = 0.1f;
+    public final ElementPosition textPosition = new ElementPosition(0.015f, 0, 0.1f, 0, 0.0f, 0);
     public float scale = 1f;
     public boolean shadow = true;
     public int refreshRate = 5;
     public boolean hideOutOfCombat = true;
     public int outOfCombatTime = 20;
+    public boolean rightAlignment = false;
+    public boolean effectPadding = false;
+    public int effectPaddingSize = 52;
 
     public boolean displayPercent = true;
     public boolean showPoise = true;
     public boolean showInure = true;
-    public boolean inureDetailedDisplay = true;
     public boolean showShielding = false;
     public boolean showSteadfast = true;
     public boolean showGuard = true;
@@ -105,20 +107,6 @@ public class WOOConfig {
                                 .controller(TickBoxControllerBuilder::create).build())
 
                         .option(Option.<Float>createBuilder()
-                                .name(Text.literal("x"))
-                                .description(OptionDescription.of(Text.literal(
-                                        "Left side of the screen - 0, right - 1")))
-                                .binding(0.015f, () -> x, newVal -> x = newVal)
-                                .controller(FloatFieldControllerBuilder::create).build())
-
-                        .option(Option.<Float>createBuilder()
-                                .name(Text.literal("y"))
-                                .description(OptionDescription.of(Text.literal(
-                                        "Top of the screen - 0, bottom - 1")))
-                                .binding(0.1f, () -> y, newVal -> y = newVal)
-                                .controller(FloatFieldControllerBuilder::create).build())
-
-                        .option(Option.<Float>createBuilder()
                                 .name(Text.literal("Scale"))
                                 .description(OptionDescription.of(Text.literal(
                                         "Size of display, default - 1")))
@@ -151,6 +139,21 @@ public class WOOConfig {
                                         "Time in seconds for display to be hidden")))
                                 .binding(20, () -> outOfCombatTime, newVal -> outOfCombatTime = newVal)
                                 .controller(IntegerFieldControllerBuilder::create).build())
+
+                        .option(Option.<Boolean>createBuilder()
+                                .name(Text.literal("Use right alignment"))
+                                .binding(false, () -> rightAlignment, newVal -> rightAlignment = newVal)
+                                .controller(TickBoxControllerBuilder::create).build())
+
+                        .option(Option.<Boolean>createBuilder()
+                                .name(Text.literal("Effect display padding"))
+                                .binding(false, () -> effectPadding, newVal -> effectPadding = newVal)
+                                .controller(TickBoxControllerBuilder::create).build())
+
+                        .option(Option.<Integer>createBuilder()
+                                .name(Text.literal("Padding size"))
+                                .binding(52, () -> effectPaddingSize, newVal -> effectPaddingSize = newVal)
+                                .controller(IntegerFieldControllerBuilder::create).build())
                         .build())
 
                 .category(ConfigCategory.createBuilder()
@@ -169,11 +172,6 @@ public class WOOConfig {
                         .option(Option.<Boolean>createBuilder()
                                 .name(Text.literal("Show Inure"))
                                 .binding(true, () -> showInure, newVal -> showInure = newVal)
-                                .controller(TickBoxControllerBuilder::create).build())
-
-                        .option(Option.<Boolean>createBuilder()
-                                .name(Text.literal("Detailed Inure Display"))
-                                .binding(true, () -> inureDetailedDisplay, newVal -> inureDetailedDisplay = newVal)
                                 .controller(TickBoxControllerBuilder::create).build())
 
                         .option(Option.<Boolean>createBuilder()
