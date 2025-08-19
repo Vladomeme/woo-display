@@ -397,9 +397,15 @@ public class SituationalDisplay extends HudElement {
         int x = Math.round((float) client.getWindow().getScaledWidth() * position.offsetXRelative + (float) position.offsetXAbsolute - position.alignX * (float) width);
         int y = Math.round((float) client.getWindow().getScaledHeight() * position.offsetYRelative + (float) position.offsetYAbsolute);
         if (config.effectPadding && !(client.currentScreen instanceof ChatScreen)) {
+            boolean usePadding = false;
+            boolean hasNegative = false;
             for (StatusEffectInstance effect : Objects.requireNonNull(client.player).getStatusEffects()) {
-                if (effect.shouldShowIcon()) y += config.effectPaddingSize;
+                if (effect.shouldShowIcon()) {
+                    usePadding = true;
+                    if (!effect.getEffectType().isBeneficial()) hasNegative = true;
+                }
             }
+            if (usePadding) y += hasNegative ? config.effectPaddingSize * 2 : config.effectPaddingSize;
         }
         return new Rectangle(x, y, width, height);
     }

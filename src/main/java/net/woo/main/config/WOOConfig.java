@@ -31,7 +31,7 @@ public class WOOConfig {
     public int outOfCombatTime = 20;
     public boolean rightAlignment = false;
     public boolean effectPadding = false;
-    public int effectPaddingSize = 52;
+    public int effectPaddingSize = 26;
 
     public boolean displayPercent = true;
     public boolean showPoise = true;
@@ -152,7 +152,7 @@ public class WOOConfig {
 
                         .option(Option.<Integer>createBuilder()
                                 .name(Text.literal("Padding size"))
-                                .binding(52, () -> effectPaddingSize, newVal -> effectPaddingSize = newVal)
+                                .binding(26, () -> effectPaddingSize, newVal -> effectPaddingSize = newVal)
                                 .controller(IntegerFieldControllerBuilder::create).build())
                         .build())
 
