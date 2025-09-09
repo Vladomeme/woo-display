@@ -27,9 +27,9 @@ dependencies {
 	modCompileOnly("com.terraformersmc:modmenu:${project.modmenu}") {
 		exclude(group: "net.fabricmc.fabric-api")
 	}
-    modImplementation("eu.pb4:placeholder-api:2.4.0-pre.1+1.20.4")
-	modImplementation("dev.isxander:yet-another-config-lib:3.6.1+1.20.4-fabric")
-	modImplementation files(".gradle/Njols-UI-framework-mc1_20_4-1.1.1.jar")
+	modImplementation("eu.pb4:placeholder-api:2.4.2+1.21")
+	modImplementation("dev.isxander:yet-another-config-lib:3.6.2+1.21-fabric")
+	modImplementation files(".gradle/Njols-UI-framework-mc1_21_1-1.1.1.jar")
 }
 
 processResources {
@@ -41,7 +41,7 @@ processResources {
 }
 
 tasks.withType(JavaCompile).configureEach {
-	it.options.release = 17
+	it.options.release = 21
 }
 
 java {

@@ -6,8 +6,8 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.ChatScreen;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.item.TooltipContext;
 import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.damage.DamageSource;
@@ -17,8 +17,10 @@ import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.passive.AnimalEntity;
 import net.minecraft.entity.passive.MerchantEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.item.tooltip.TooltipType;
 import net.minecraft.registry.tag.DamageTypeTags;
 import net.minecraft.text.Style;
 import net.minecraft.text.Text;
@@ -98,7 +100,7 @@ public class SituationalDisplay extends HudElement {
     }
 
     @Override
-    protected void render(DrawContext context, float delta) {
+    protected void render(DrawContext context, RenderTickCounter tickCounter) {
         int y = 0;
         float scale = config.scale;
 
@@ -298,7 +300,7 @@ public class SituationalDisplay extends HudElement {
     }
 
     private static void checkLore(Set<Situationals> situationals, ItemStack stack) {
-        stack.getTooltip(player, TooltipContext.BASIC).forEach(line -> {
+        stack.getTooltip(Item.TooltipContext.DEFAULT, player, TooltipType.BASIC).forEach(line -> {
             for (Situationals enchant : Situationals.values()) {
                 if (!enchant.shouldDisplay()) continue;
                 if (line.getString().contains(enchant.name)) situationals.add(enchant);
@@ -402,7 +404,7 @@ public class SituationalDisplay extends HudElement {
             for (StatusEffectInstance effect : Objects.requireNonNull(client.player).getStatusEffects()) {
                 if (effect.shouldShowIcon()) {
                     usePadding = true;
-                    if (!effect.getEffectType().isBeneficial()) hasNegative = true;
+                    if (!effect.getEffectType().value().isBeneficial()) hasNegative = true;
                 }
             }
             if (usePadding) y += hasNegative ? config.effectPaddingSize * 2 : config.effectPaddingSize;
